@@ -3834,6 +3834,12 @@
         
         canvas.removeEventListener('click', handleCanvasClick);
         canvas.addEventListener('click', handleCanvasClick);
+        canvas.removeEventListener('mousemove', handleCanvasMouseMove);
+        canvas.addEventListener('mousemove', handleCanvasMouseMove);
+        
+        window.Game = window.Game || {};
+        window.Game.mouseX = 0;
+        window.Game.mouseY = 0;
         
         updateHUD();
       }
@@ -4109,6 +4115,14 @@
         let clickedTower = towers.find(t => Math.sqrt((t.x - clickX)**2 + (t.y - clickY)**2) < t.radius + 5);
         if (clickedTower) { selectedTower = clickedTower; updateSelectedTowerUI(); }
         else { selectedTower = null; document.getElementById("tower-details-card").classList.add("hide"); }
+      }
+
+      function handleCanvasMouseMove(e) {
+        if (!canvas) return;
+        const rect = canvas.getBoundingClientRect();
+        window.Game = window.Game || {};
+        window.Game.mouseX = e.clientX - rect.left;
+        window.Game.mouseY = e.clientY - rect.top;
       }
 
       function triggerTrebuchetStrike(x, y) {
@@ -4914,10 +4928,92 @@
         });
 
         if (placingTowerType || placingTrapType || typeof placingHeroType === 'string') {
+          // Draw grid lines
           ctx.strokeStyle = 'rgba(0,0,0,0.12)';
           ctx.lineWidth = 1;
           for (let c = 0; c < 20; c++) {
             for (let r = 0; r < 15; r++) ctx.strokeRect(c * cellSize, r * cellSize, cellSize, cellSize);
+          }
+
+          // Snapped placement preview (following the mouse in grid pattern)
+          const gx = Math.floor((window.Game.mouseX || 0) / cellSize);
+          const gy = Math.floor((window.Game.mouseY || 0) / cellSize);
+
+          if (gx >= 0 && gx < 20 && gy >= 0 && gy < 15) {
+            const px = gx * cellSize + 20;
+            const py = gy * cellSize + 20;
+
+            if (placingTowerType) {
+              const tempTower = new TowerStructure(placingTowerType, px, py, gx, gy);
+              
+              // Validate placement spot
+              const occupied = towers.some(t => t.gridX === gx && t.gridY === gy);
+              const onPath = waypoints.some(wp => Math.sqrt((wp.x - px)**2 + (wp.y - py)**2) < 24);
+              const isCover = coverBlocks.some(cb => cb.gridX === gx && cb.gridY === gy);
+              const isValid = !occupied && !onPath && !isCover;
+
+              // Draw placement range ring
+              ctx.save();
+              ctx.beginPath();
+              ctx.arc(px, py, tempTower.getRange(), 0, Math.PI * 2);
+              ctx.fillStyle = isValid ? 'rgba(30, 96, 145, 0.08)' : 'rgba(239, 68, 68, 0.08)';
+              ctx.fill();
+              ctx.strokeStyle = isValid ? '#1e6091' : '#ef4444';
+              ctx.lineWidth = 2.5;
+              ctx.stroke();
+              ctx.restore();
+
+              // Draw ghost tack (with red blocked overlay if invalid)
+              ctx.save();
+              ctx.globalAlpha = 0.55;
+              tempTower.draw(ctx, isDark);
+              if (!isValid) {
+                ctx.beginPath();
+                ctx.arc(px, py, tempTower.radius + 2, 0, Math.PI*2);
+                ctx.fillStyle = 'rgba(239, 68, 68, 0.3)';
+                ctx.fill();
+              }
+              ctx.restore();
+            } else if (placingTrapType) {
+              const onPath = waypoints.some(wp => Math.sqrt((wp.x - px)**2 + (wp.y - py)**2) < 24);
+              const occupied = traps.some(tr => Math.sqrt((tr.x - px)**2 + (tr.y - py)**2) < 15);
+              const isValid = onPath && !occupied;
+
+              ctx.save();
+              ctx.globalAlpha = 0.6;
+              ctx.beginPath();
+              ctx.arc(px, py, 14, 0, Math.PI * 2);
+              ctx.fillStyle = placingTrapType === 'spike' ? '#ef4444' : '#78350f';
+              ctx.fill();
+              ctx.strokeStyle = isValid ? '#000000' : '#ef4444';
+              ctx.lineWidth = 3;
+              ctx.stroke();
+
+              ctx.font = '12px var(--font-primary)';
+              ctx.fillStyle = '#fff';
+              ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+              ctx.fillText(placingTrapType === 'spike' ? '📌' : '🎗️', px, py);
+              ctx.restore();
+            } else if (typeof placingHeroType === 'string') {
+              const onPath = waypoints.some(wp => Math.sqrt((wp.x - px)**2 + (wp.y - py)**2) < 28);
+              const isValid = onPath;
+
+              ctx.save();
+              ctx.globalAlpha = 0.6;
+              ctx.beginPath();
+              ctx.arc(px, py, 14, 0, Math.PI * 2);
+              ctx.fillStyle = '#3b82f6';
+              ctx.fill();
+              ctx.strokeStyle = isValid ? '#000000' : '#ef4444';
+              ctx.lineWidth = 3;
+              ctx.stroke();
+
+              ctx.font = '12px var(--font-primary)';
+              ctx.fillStyle = '#fff';
+              ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+              ctx.fillText(placingHeroType === 'commander' ? '💂' : (placingHeroType === 'scout' ? '🏹' : '🧙'), px, py);
+              ctx.restore();
+            }
           }
         }
 
